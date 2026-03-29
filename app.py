@@ -80,8 +80,8 @@ elif menu == "批量生成工资条":
 
     # 发件邮箱配置
     with st.expander("🔑 填写你的发件邮箱配置（QQ邮箱）"):
-        sender_email = st.text_input("你的QQ发件邮箱", value="你的QQ号@qq.com")
-        sender_auth = st.text_input("QQ邮箱SMTP授权码", type="password")
+        sender_email = st.text_input("3388743335@qq.com", value="你的QQ号@qq.com")
+        sender_auth = st.text_input("wnjpowrxlrubdccd", type="password")
         email_title = st.text_input("邮件标题", value="【本月工资条】请查收")
         email_content = st.text_area("邮件正文", value="你好，附件是本月个人工资条，请勿转发~")
 
