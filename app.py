@@ -73,41 +73,74 @@ elif menu == "Excel批量合并":
             st.download_button("下载合并后的Excel", f, file_name=save_name)
         os.remove(save_name)
 
-# ========== 3. 批量生成工资条 ==========
+# ========== 3. 批量生成工资条 + 自动群发邮件（全新增强版） ==========
 elif menu == "批量生成工资条":
-    st.subheader("批量生成工资条工具")
-    st.write("要求：Excel第1行是表头，第2列是员工姓名")
+    st.subheader("📨 工资条生成 + 自动邮件群发")
+    st.info("Excel要求：第1行表头 | 第2列=员工姓名 | 最后1列=员工QQ邮箱")
+
+    # 发件邮箱配置
+    with st.expander("🔑 填写你的发件邮箱配置（QQ邮箱）"):
+        sender_email = st.text_input("你的QQ发件邮箱", value="你的QQ号@qq.com")
+        sender_auth = st.text_input("QQ邮箱SMTP授权码", type="password")
+        email_title = st.text_input("邮件标题", value="【本月工资条】请查收")
+        email_content = st.text_area("邮件正文", value="你好，附件是本月个人工资条，请勿转发~")
+
     uploaded_file = st.file_uploader("上传工资总表Excel", type=["xlsx", "xls"])
 
-    if uploaded_file:
+    if uploaded_file and sender_auth:
         df = pd.read_excel(uploaded_file)
-        st.write("✅ 工资总表读取成功，共", len(df), "名员工")
-        st.dataframe(df.head())
+        st.success(f"✅ 读取成功，共 {len(df)} 名员工")
+        st.dataframe(df.head(3))
 
-        # 生成单个工资条压缩包
-        from openpyxl import load_workbook
-        from io import BytesIO
-        import zipfile
+        if st.button("🚀 生成工资条 + 一键群发"):
+            import smtplib
+            from email.mime.multipart import MIMEMultipart
+            from email.mime.base import MIMEBase
+            from email import encoders
+            from io import BytesIO
 
-        zip_buffer = BytesIO()
-        with zipfile.ZipFile(zip_buffer, "w") as zipf:
-            for i, row in df.iterrows():
-                employee_name = row[1] if len(row) > 1 else f"员工{i + 1}"
-                single_df = pd.DataFrame([df.columns.tolist(), row.tolist()])
+            progress_bar = st.progress(0)
+            total = len(df)
 
-                # 保存到内存
+            for idx, row in df.iterrows():
+                # 读取员工信息
+                name = str(row[1])
+                staff_email = str(row.iloc[-1])  # 最后一列=员工邮箱
+
+                # 生成单人工资条
+                single_df = pd.DataFrame([df.columns, row])
                 buffer = BytesIO()
                 single_df.to_excel(buffer, index=False, header=False)
                 buffer.seek(0)
-                zipf.writestr(f"{employee_name}_工资条.xlsx", buffer.read())
 
-        zip_buffer.seek(0)
-        st.download_button(
-            "下载所有员工工资条压缩包",
-            zip_buffer,
-            file_name=f"工资条包_{datetime.now().strftime('%Y%m%d%H%M%S')}.zip"
-        )
+                # 组装邮件
+                msg = MIMEMultipart()
+                msg["From"] = sender_email
+                msg["To"] = staff_email
+                msg["Subject"] = email_title
+                msg.attach(MIMEText(email_content, "plain"))
 
+                # 挂载附件
+                part = MIMEBase("application", "octet-stream")
+                part.set_payload(buffer.read())
+                encoders.encode_base64(part)
+                part.add_header("Content-Disposition", f"attachment; filename={name}_工资条.xlsx")
+                msg.attach(part)
+
+                # 发送（QQ邮箱SMTP）
+                try:
+                    server = smtplib.SMTP_SSL("smtp.qq.com", 465)
+                    server.login(sender_email, sender_auth)
+                    server.sendmail(sender_email, staff_email, msg.as_string())
+                    server.close()
+                    st.write(f"✅ {name} → 发送成功")
+                except Exception as e:
+                    st.error(f"❌ {name} 发送失败：{str(e)}")
+
+                # 更新进度
+                progress_bar.progress((idx+1)/total)
+
+            st.success("🎉 全部处理完毕！")
 # ========== 4. 数据分析可视化 ==========
 elif menu == "数据分析可视化":
     st.subheader("数据分析可视化工具")
