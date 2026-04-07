@@ -242,13 +242,13 @@ elif menu == "PDF工具箱":
             file_name=f"合并PDF_{datetime.now().strftime('%Y%m%d%H%M%S')}.pdf"
         )
 
-# ========== 8. 数据库存查询(SQL) 新增完整模块！ ==========
+# ========== 8. 数据库存查询(SQL) 优化去重版 ==========
 elif menu == "数据库存查询(SQL)":
     import sqlite3
     import pandas as pd
 
     st.subheader("📊 SQL员工数据库管理（面试演示版）")
-    st.info("支持Excel一键入库、高频统计查询、自定义SQL查询，面试必考功能全覆盖")
+    st.info("支持Excel一键入库、自动去重、高频统计查询，彻底解决数据重复问题")
 
     # 连接数据库（自动生成数据库文件）
     conn = sqlite3.connect("staff_data.db", check_same_thread=False)
@@ -266,16 +266,67 @@ elif menu == "数据库存查询(SQL)":
     ''')
     conn.commit()
 
-    # 1. Excel一键入库
+    # 实时显示当前数据库人数
+    total_count = pd.read_sql("SELECT COUNT(*) AS total FROM staff", conn).iloc[0,0]
+    st.info(f"📌 当前数据库总员工数：{total_count} 人")
+
+    # 1. Excel一键入库（优化去重版）
     st.subheader("1. Excel数据一键入库")
     up_file = st.file_uploader("上传员工Excel表", type="xlsx")
+    
+    # 入库模式选择
+    save_mode = st.radio("入库模式", ["追加入库（新增员工，自动去重）", "覆盖全库（清空旧数据，只保留本次上传）"])
+    
     if up_file:
         df_in = pd.read_excel(up_file)
-        df_in.to_sql("staff", conn, if_exists="append", index=False)
-        st.success(f"✅ 成功入库 {len(df_in)} 条员工数据！")
+        st.write("✅ 本次上传Excel预览：")
+        st.dataframe(df_in.head())
 
-    # 2. 面试高频一键查询（直接演示）
-    st.subheader("2. 高频统计查询（面试一键演示）")
+        if st.button("确认入库"):
+            if save_mode == "覆盖全库（清空旧数据，只保留本次上传）":
+                # 覆盖模式：先清空表，再写入新数据
+                df_in.to_sql("staff", conn, if_exists="replace", index=False)
+                st.success(f"✅ 覆盖入库成功！已清空旧数据，本次入库 {len(df_in)} 条员工数据")
+            
+            else:
+                # 追加模式：先去重，再入库
+                # 1. 先读数据库现有数据
+                existing_df = pd.read_sql("SELECT name, email FROM staff", conn)
+                # 2. 过滤掉本次上传里，已经存在的员工（姓名+邮箱一致就判定为重复）
+                df_unique = df_in[~df_in[["name", "email"]].apply(tuple, 1).isin(existing_df[["name", "email"]].apply(tuple, 1))]
+                # 3. 只把不重复的新数据入库
+                if len(df_unique) > 0:
+                    df_unique.to_sql("staff", conn, if_exists="append", index=False)
+                    st.success(f"✅ 追加入库成功！本次新增 {len(df_unique)} 条不重复数据，过滤掉 {len(df_in)-len(df_unique)} 条重复数据")
+                else:
+                    st.warning("⚠️ 本次上传的所有数据，在数据库里都已存在，没有新增数据")
+
+    # 2. 数据清洗工具
+    st.subheader("2. 数据清洗工具")
+    col_clean1, col_clean2 = st.columns(2)
+    with col_clean1:
+        if st.button("一键清洗重复数据"):
+            # 按姓名+邮箱去重，只保留id最小的一条
+            cursor.execute('''
+            DELETE FROM staff 
+            WHERE id NOT IN (
+                SELECT MIN(id) FROM staff GROUP BY name, email
+            )
+            ''')
+            conn.commit()
+            new_count = pd.read_sql("SELECT COUNT(*) AS total FROM staff", conn).iloc[0,0]
+            st.success(f"✅ 去重完成！清洗后剩余 {new_count} 条数据")
+    
+    with col_clean2:
+        if st.button("一键清空全部数据"):
+            cursor.execute("DELETE FROM staff")
+            # 重置自增id
+            cursor.execute("DELETE FROM sqlite_sequence WHERE name='staff'")
+            conn.commit()
+            st.success("✅ 数据库已全部清空，id已重置")
+
+    # 3. 面试高频一键查询（直接演示）
+    st.subheader("3. 高频统计查询（面试一键演示）")
     col1, col2, col3 = st.columns(3)
     
     with col1:
@@ -305,14 +356,14 @@ elif menu == "数据库存查询(SQL)":
             res = pd.read_sql("SELECT name, dept, salary FROM staff WHERE salary > (SELECT AVG(salary) FROM staff)", conn)
             st.dataframe(res)
 
-    # 3. 自定义条件搜索
-    st.subheader("3. 自定义条件搜索")
+    # 4. 自定义条件搜索
+    st.subheader("4. 自定义条件搜索")
     search_key = st.text_input("输入姓名/部门，精准搜索")
     if search_key:
         search_res = pd.read_sql(f"SELECT * FROM staff WHERE name LIKE '%{search_key}%' OR dept LIKE '%{search_key}%'", conn)
         st.dataframe(search_res)
 
-    # 4. 查看全部数据
+    # 5. 查看全部数据
     if st.button("查看全部员工数据"):
         all_df = pd.read_sql("SELECT * FROM staff", conn)
         st.dataframe(all_df)
