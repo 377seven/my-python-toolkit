@@ -372,7 +372,7 @@ elif menu == "数据库存查询(SQL)":
     # 关闭数据库连接
     conn.close()
 
-# ========== 9. 新增：薪酬分析可视化看板 ==========
+# ========== 9. 薪酬分析可视化看板（云端修复版） ==========
 elif menu == "薪酬分析可视化看板":
     import sqlite3
     import pandas as pd
@@ -381,8 +381,22 @@ elif menu == "薪酬分析可视化看板":
     st.subheader("📈 企业薪酬分析可视化看板")
     st.info("自动读取SQL数据库数据，一键生成全维度薪酬分析图表，面试绝杀功能")
 
-    # 连接数据库，自动读取员工数据
+    # 连接数据库，自动建表（云端修复核心）
     conn = sqlite3.connect("staff_data.db", check_same_thread=False)
+    cursor = conn.cursor()
+    
+    # 关键修复：如果没有staff表，自动创建空表，避免报错
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS staff (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT,
+        dept TEXT,
+        salary INTEGER,
+        email TEXT
+    )
+    ''')
+    conn.commit()
+    
     total_df = pd.read_sql("SELECT * FROM staff", conn)
     conn.close()
 
@@ -390,7 +404,7 @@ elif menu == "薪酬分析可视化看板":
     if len(total_df) == 0:
         st.warning("⚠️ 数据库暂无员工数据，请先去「数据库存查询(SQL)」页面上传Excel入库")
     else:
-        # 1. 核心指标卡片（最直观的数字，面试官一眼看到）
+        # 1. 核心指标卡片
         st.subheader("📌 核心薪酬指标概览")
         col1, col2, col3, col4 = st.columns(4)
         with col1:
@@ -402,7 +416,7 @@ elif menu == "薪酬分析可视化看板":
         with col4:
             st.metric("月度总薪资支出", f"{total_df['salary'].sum()} 元")
 
-        # 2. 第一行图表：部门人数分布 + 部门平均薪资对比
+        # 2. 部门维度分析
         st.subheader("📊 部门维度分析")
         col_chart1, col_chart2 = st.columns(2)
 
@@ -411,7 +425,7 @@ elif menu == "薪酬分析可视化看板":
             dept_count = total_df['dept'].value_counts()
             fig1, ax1 = plt.subplots(figsize=(8, 6))
             ax1.pie(dept_count.values, labels=dept_count.index, autopct='%1.1f%%', startangle=90, colors=plt.cm.Paired.colors)
-            ax1.axis('equal')  # 保证饼图是正圆形
+            ax1.axis('equal')
             st.pyplot(fig1)
 
         # 图表2：各部门平均薪资对比柱状图
@@ -425,12 +439,12 @@ elif menu == "薪酬分析可视化看板":
             plt.tight_layout()
             st.pyplot(fig2)
 
-        # 3. 第二行图表：薪资TOP10员工排行
+        # 3. 薪资TOP10员工排行
         st.subheader("🏆 薪资TOP10员工排行")
         top10_salary = total_df.sort_values('salary', ascending=False).head(10)[['name', 'dept', 'salary']]
         fig3, ax3 = plt.subplots(figsize=(12, 6))
         ax3.barh(top10_salary['name'], top10_salary['salary'], color='#ff7f0e', edgecolor='black')
-        ax3.invert_yaxis()  # 让第一名在最上面
+        ax3.invert_yaxis()
         ax3.set_title("薪资TOP10员工", fontsize=14, fontweight='bold')
         ax3.set_xlabel("薪资（元）")
         plt.tight_layout()
